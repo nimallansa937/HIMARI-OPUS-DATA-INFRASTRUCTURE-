@@ -1,0 +1,57 @@
+# HIMARI Opus1 - Redpanda Configuration for v25.3
+# File: /etc/redpanda/redpanda.yaml
+# Deploy to: 178.156.220.101
+
+redpanda:
+  data_directory: /var/lib/redpanda/data
+  node_id: 0
+  seed_servers: []
+
+  # RPC Server (internal cluster communication)
+  rpc_server:
+    address: 0.0.0.0
+    port: 33145
+  advertised_rpc_api:
+    address: 178.156.220.101
+    port: 33145
+
+  # Kafka API (client connections)
+  kafka_api:
+    - address: 0.0.0.0
+      port: 9092
+      name: internal
+  advertised_kafka_api:
+    - address: 178.156.220.101
+      port: 9092
+      name: internal
+
+  # Admin API
+  admin:
+    - address: 0.0.0.0
+      port: 9644
+
+  # Development mode (relaxed settings for testing)
+  developer_mode: true
+
+  # Empty seed means single-node cluster
+  empty_seed_starts_cluster: true
+
+# RPK settings
+rpk:
+  overprovisioned: true
+  tune_network: false
+  tune_disk_scheduler: false
+  tune_disk_nomerges: false
+  tune_disk_write_cache: false
+  tune_cpu: false
+  tune_aio_events: false
+  tune_clocksource: false
+  tune_swappiness: false
+  tune_transparent_hugepages: false
+  tune_fstrim: false
+  enable_memory_locking: false
+  tune_coredump: false
+  tune_ballast_file: false
+
+pandaproxy: {}
+schema_registry: {}

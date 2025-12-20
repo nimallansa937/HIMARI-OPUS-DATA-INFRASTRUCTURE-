@@ -1,0 +1,139 @@
+# HIMARI Opus1 - Prometheus Alert Rules
+# Critical alerts for system health monitoring
+
+groups:
+  - name: himari_critical
+    rules:
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory usage above 90%"
+          description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU usage above 90%"
+          description: "CPU usage is {{ $value | humanize }}% on {{ $labels.instance }}"
+
+      # Disk space low
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk space below 10%"
+          description: "Disk {{ $labels.mountpoint }} has {{ $value | humanizePercentage }} free"
+
+      # Flink job failure
+      - alert: FlinkJobFailed
+        expr: flink_jobmanager_job_numRunningJobs == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No Flink jobs running"
+          description: "All Flink jobs have stopped on {{ $labels.instance }}"
+
+      # High checkpoint duration
+      - alert: SlowCheckpoints
+        expr: flink_jobmanager_job_lastCheckpointDuration > 60000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Checkpoint taking >60 seconds"
+          description: "Last checkpoint took {{ $value | humanizeDuration }}"
+
+      # Failed checkpoints
+      - alert: FailedCheckpoints
+        expr: increase(flink_jobmanager_job_numberOfFailedCheckpoints[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Checkpoint failures detected"
+          description: "{{ $value }} checkpoints failed in the last 5 minutes"
+
+      # Redis memory pressure
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory above 85%"
+          description: "Redis memory usage is {{ $value | humanizePercentage }}"
+
+      # Redis connection issues
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance {{ $labels.instance }} is not responding"
+
+      # Kafka consumer lag
+      - alert: HighConsumerLag
+        expr: kafka_consumergroup_lag > 10000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer lag >10K messages"
+          description: "Consumer group {{ $labels.group }} has {{ $value }} messages lag"
+
+      # Redpanda broker down
+      - alert: RedpandaDown
+        expr: up{job="redpanda"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redpanda broker is down"
+          description: "Redpanda instance {{ $labels.instance }} is not responding"
+
+  - name: himari_data_quality
+    rules:
+      # Low quality data rate
+      - alert: HighBadDataRate
+        expr: rate(himari_quality_low_count[5m]) / rate(himari_quality_total_count[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of low-quality data"
+          description: "{{ $value | humanizePercentage }} of incoming data has quality score < 0.7"
+
+      # No data flowing
+      - alert: NoDataFlow
+        expr: rate(himari_messages_processed_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No data flowing through pipeline"
+          description: "No messages processed in the last 5 minutes"
+
+  - name: himari_latency
+    rules:
+      # High end-to-end latency
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, rate(himari_processing_latency_seconds_bucket[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 latency above 50ms"
+          description: "99th percentile latency is {{ $value | humanizeDuration }}"

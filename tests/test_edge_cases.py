@@ -179,10 +179,6 @@ class TestEdgeCaseTimestamps:
     
     def test_zero_timestamp(self):
         """Test handling of zero timestamp (Unix epoch)."""
-        data = {
-            'timestamp': 0
-        }
-        
         # 1970-01-01 00:00:00 UTC - use utcfromtimestamp for timezone independence
         dt = datetime.utcfromtimestamp(0)
         assert dt.year == 1970

@@ -8,7 +8,7 @@ import json
 
 # Optional imports - tests will skip if not available
 try:
-    from kafka import KafkaProducer, KafkaConsumer
+    from kafka import KafkaProducer
     HAS_KAFKA = True
 except ImportError:
     HAS_KAFKA = False

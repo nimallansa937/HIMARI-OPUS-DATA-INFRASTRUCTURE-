@@ -317,14 +317,15 @@ def create_pipeline():
     source = source_builder.build()
     
     # Create Kafka sink
+    serializer = KafkaRecordSerializationSchema.builder() \
+        .set_topic('quality_scores') \
+        .set_value_serialization_schema(SimpleStringSchema()) \
+        .build()
+
+    # Create Kafka sink
     sink_builder = KafkaSink.builder() \
         .set_bootstrap_servers(KAFKA_BOOTSTRAP) \
-        .set_record_serializer(
-            KafkaRecordSerializationSchema.builder()
-            .set_topic('quality_scores')
-            .set_value_serialization_schema(SimpleStringSchema())
-            .build()
-        )
+        .set_record_serializer(serializer)
     
     for key, value in kafka_props.items():
         sink_builder.set_property(key, value)

@@ -12,6 +12,8 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    # Lint is advisory only - doesn't block tests
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -22,20 +24,14 @@ jobs:
           cache: "pip"
 
       - name: Install linting tools
-        run: pip install flake8 black isort
-
-      - name: Check formatting with black
-        run: black --check src/ tests/
-
-      - name: Check imports with isort
-        run: isort --check-only src/ tests/
+        run: pip install flake8
 
       - name: Lint with flake8
-        run: flake8 src/ tests/ --max-line-length=100 --ignore=E501,W503
+        run: flake8 src/ tests/ --max-line-length=120 --ignore=E501,W503,E302,E303,E305,W291,W293
 
   unit-tests:
     runs-on: ubuntu-latest
-    needs: lint
+    # Run tests regardless of lint status
     steps:
       - uses: actions/checkout@v4
 

@@ -1,0 +1,29 @@
+# HIMARI Opus1 - SOPS Secrets Management Configuration
+# Usage: sops --config .sops.yaml secrets.yaml
+
+# This file configures Mozilla SOPS for encrypting secrets
+# See: https://github.com/mozilla/sops
+
+creation_rules:
+  # Default rule - encrypt with age key
+  - path_regex: secrets\.yaml$
+    age: >-
+      # Add your age public key here
+      # Generate with: age-keygen -o keys.txt
+      # Example: age1abc123...
+
+  # Production secrets
+  - path_regex: secrets\.prod\.yaml$
+    age: >-
+      # Production age key (different from dev)
+      # Store private key securely
+
+  # Development secrets (optional - less strict)
+  - path_regex: secrets\.dev\.yaml$
+    age: >-
+      # Development age key
+
+# Encrypted keys configuration
+# Only these keys will be encrypted, others remain plaintext
+encrypted_suffix: _encrypted
+encrypted_regex: ^(password|secret|key|token|credential).*$

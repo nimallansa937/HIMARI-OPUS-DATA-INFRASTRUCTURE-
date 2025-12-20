@@ -1,6 +1,6 @@
-# HIMARI Opus1 - Docker Compose Infrastructure
-# One-command local development environment
-# Usage: docker-compose up -d
+# HIMARI Opus1 - Production Docker Compose
+# Secure configuration with localhost-only port binding
+# Usage: docker-compose -f docker-compose.prod.yml up -d
 
 version: "3.8"
 
@@ -21,14 +21,15 @@ services:
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
       - --rpc-addr redpanda:33145
       - --advertise-rpc-addr redpanda:33145
-      - --mode dev-container
-      - --smp 1
-      - --default-log-level=warn
+      - --mode production
+      - --smp 2
       - --memory 2G
+      - --default-log-level=info
     ports:
-      - "19092:19092" # Kafka API
-      - "18082:18082" # Pandaproxy (HTTP API)
-      - "18081:18081" # Schema Registry
+      # SECURITY: Bind to localhost only - not exposed externally
+      - "127.0.0.1:19092:19092"
+      - "127.0.0.1:18082:18082"
+      - "127.0.0.1:18081:18081"
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     deploy:
@@ -36,26 +37,14 @@ services:
         limits:
           memory: 2G
           cpus: '2'
+        reservations:
+          memory: 1G
     healthcheck:
       test: ["CMD", "rpk", "cluster", "health"]
-      interval: 10s
-      timeout: 5s
+      interval: 30s
+      timeout: 10s
       retries: 5
-    networks:
-      - himari-network
-
-  # Redpanda Console (Web UI)
-  redpanda-console:
-    image: docker.redpanda.com/redpandadata/console:v2.4.5
-    container_name: himari-console
-    depends_on:
-      redpanda:
-        condition: service_healthy
-    ports:
-      - "8080:8080"
-    environment:
-      KAFKA_BROKERS: redpanda:9092
-      SCHEMA_REGISTRY_URL: http://redpanda:8081
+    restart: unless-stopped
     networks:
       - himari-network
 
@@ -65,9 +54,14 @@ services:
   redis:
     image: redis:7-alpine
     container_name: himari-redis
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 512mb 
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     deploy:
@@ -77,9 +71,10 @@ services:
           cpus: '0.5'
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     networks:
       - himari-network
 
@@ -90,11 +85,11 @@ services:
     image: timescale/timescaledb:latest-pg15
     container_name: himari-timescale
     environment:
-      POSTGRES_USER: himari
-      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-himari-dev-password}
+      POSTGRES_USER: ${TIMESCALE_USER:-himari}
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD}
       POSTGRES_DB: himari_analytics
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - timescale-data:/var/lib/postgresql/data
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
@@ -103,11 +98,14 @@ services:
         limits:
           memory: 1G
           cpus: '1'
+        reservations:
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U himari -d himari_analytics"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     networks:
       - himari-network
 
@@ -118,23 +116,32 @@ services:
     image: neo4j:5.15-community
     container_name: himari-neo4j
     environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-himari-dev-password}
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
       NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_dbms_memory_heap_initial__size: 256m
-      NEO4J_dbms_memory_heap_max__size: 512m
-      NEO4J_dbms_memory_pagecache_size: 256m
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+      NEO4J_dbms_memory_pagecache_size: 512m
+      # Security hardening
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_dbms_connector_bolt_listen__address: 0.0.0.0:7687
     ports:
-      - "7474:7474" # HTTP (Neo4j Browser)
-      - "7687:7687" # Bolt
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
       - ./neo4j:/import:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '1'
     healthcheck:
       test: ["CMD", "neo4j", "status"]
-      interval: 10s
+      interval: 30s
       timeout: 10s
       retries: 10
+    restart: unless-stopped
     networks:
       - himari-network
 
@@ -147,36 +154,50 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
       - "--web.enable-lifecycle"
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     networks:
       - himari-network
 
   # ==========================================================================
-  # GRAFANA (Dashboards) - Optional
+  # GRAFANA (Dashboards)
   # ==========================================================================
   grafana:
     image: grafana/grafana:10.2.2
     container_name: himari-grafana
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_URL:-http://localhost:3000}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
     depends_on:
       - prometheus
+    restart: unless-stopped
     networks:
       - himari-network
 

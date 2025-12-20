@@ -71,10 +71,10 @@ class TestEdgeCaseNumbers:
         assert not (nan_value > 0)
         assert not (nan_value <= 0)
         
-        # JSON handling
-        # Note: JSON doesn't support NaN natively
+        # JSON handling - by default Python allows NaN, but strict JSON doesn't
+        # Using allow_nan=False enforces strict JSON compliance
         with pytest.raises(ValueError):
-            json.dumps({'price': nan_value})
+            json.dumps({'price': nan_value}, allow_nan=False)
     
     def test_infinity_price(self):
         """Test handling of infinity price values."""
@@ -83,9 +83,9 @@ class TestEdgeCaseNumbers:
         assert math.isinf(inf_value)
         assert inf_value > 0
         
-        # JSON doesn't support infinity
+        # JSON doesn't support infinity - use allow_nan=False for strict mode
         with pytest.raises(ValueError):
-            json.dumps({'price': inf_value})
+            json.dumps({'price': inf_value}, allow_nan=False)
     
     def test_integer_overflow_volume(self):
         """Test handling of very large volume that might overflow 32-bit."""
@@ -126,8 +126,8 @@ class TestEdgeCaseStrings:
             'exchange': 'binance'
         }
         
-        # Should not crash
-        json_str = json.dumps(data)
+        # Should not crash - use ensure_ascii=False to preserve emoji
+        json_str = json.dumps(data, ensure_ascii=False)
         assert '🚀' in json_str
     
     def test_empty_symbol(self):
@@ -187,8 +187,8 @@ class TestEdgeCaseTimestamps:
             'timestamp': 0
         }
         
-        # 1970-01-01 00:00:00 - very old but technically valid
-        dt = datetime.fromtimestamp(0)
+        # 1970-01-01 00:00:00 UTC - use utcfromtimestamp for timezone independence
+        dt = datetime.utcfromtimestamp(0)
         assert dt.year == 1970
     
     def test_far_future_timestamp(self):
@@ -205,8 +205,8 @@ class TestEdgeCaseTimestamps:
         # 2039-01-01 in milliseconds
         ts_2039 = 2177452800000
         
-        # Python handles this fine
-        dt = datetime.fromtimestamp(ts_2039 / 1000)
+        # Python handles this fine - use utcfromtimestamp for timezone independence
+        dt = datetime.utcfromtimestamp(ts_2039 / 1000)
         assert dt.year == 2039
     
     def test_iso_timestamp_parsing(self):

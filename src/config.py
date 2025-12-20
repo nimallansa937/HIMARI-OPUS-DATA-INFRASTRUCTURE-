@@ -3,7 +3,7 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Set, Dict, Any
+from typing import Set, Dict
 import yaml
 
 
@@ -45,7 +45,7 @@ class QualityConfig:
     
     # Temporal validation
     stale_data_threshold_ms: int = 30000   # 30 seconds
-    delayed_data_threshold_ms: int = 10000 # 10 seconds
+    delayed_data_threshold_ms: int = 10000  # 10 seconds
     future_timestamp_threshold_ms: int = 5000  # 5 seconds into future
     large_gap_threshold_ms: int = 60000    # 60 second gap
     

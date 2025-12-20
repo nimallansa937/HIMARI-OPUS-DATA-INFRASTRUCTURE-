@@ -5,8 +5,6 @@
 import pytest
 import time
 import json
-from datetime import datetime, timedelta
-from typing import Optional
 
 # Optional imports - tests will skip if not available
 try:
@@ -130,7 +128,7 @@ class TestRedis:
     def test_connection(self):
         """Verify Redis connection."""
         response = self.client.ping()
-        assert response == True
+        assert response is True
         print("✓ Redis connection successful")
     
     def test_latency(self):
@@ -163,8 +161,8 @@ class TestRedis:
         used_mb = info['used_memory'] / (1024 * 1024)
         max_mb = info.get('maxmemory', 0) / (1024 * 1024)
         
-        print(f"✓ Redis memory: {used_mb:.1f}MB used" + 
-              (f" / {max_mb:.0f}MB max" if max_mb > 0 else ""))
+        print(f"✓ Redis memory: {used_mb:.1f}MB used"
+              + (f" / {max_mb:.0f}MB max" if max_mb > 0 else ""))
 
 
 class TestTimescaleDB:
@@ -280,7 +278,7 @@ class TestNeo4j:
                 RETURN e.name, collect(p.symbol) as pairs
                 LIMIT 10
             """)
-            records = list(result)
+            list(result)  # Consume results
             latency_ms = (time.time() - start) * 1000
             
             assert latency_ms < 100, f"Graph query took {latency_ms:.1f}ms > 100ms target"
@@ -309,7 +307,7 @@ class TestSystemHealth:
                 if producer.bootstrap_connected():
                     services['Redpanda'] = True
                 producer.close()
-            except:
+            except Exception:
                 pass
         
         # Test Redis
@@ -324,7 +322,7 @@ class TestSystemHealth:
                 if client.ping():
                     services['Redis'] = True
                 client.close()
-            except:
+            except Exception:
                 pass
         
         # Test TimescaleDB
@@ -341,7 +339,7 @@ class TestSystemHealth:
                 cursor.execute("SELECT 1")
                 services['TimescaleDB'] = True
                 conn.close()
-            except:
+            except Exception:
                 pass
         
         # Test Neo4j
@@ -354,7 +352,7 @@ class TestSystemHealth:
                 driver.verify_connectivity()
                 services['Neo4j'] = True
                 driver.close()
-            except:
+            except Exception:
                 pass
         
         # Print summary

@@ -4,7 +4,6 @@
 
 import redis
 import json
-from datetime import datetime
 from typing import Dict, Any, List
 
 from pyflink.datastream.functions import SinkFunction

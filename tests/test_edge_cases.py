@@ -5,9 +5,7 @@
 import pytest
 import json
 import math
-import sys
 from datetime import datetime
-from unittest.mock import Mock, patch
 
 
 class TestEdgeCaseNumbers:
@@ -174,12 +172,10 @@ class TestEdgeCaseTimestamps:
     
     def test_negative_timestamp(self):
         """Test handling of negative timestamp (before 1970)."""
-        data = {
-            'timestamp': -1000000
-        }
+        timestamp = -1000000
         
         # Should be detected as invalid
-        assert data['timestamp'] < 0
+        assert timestamp < 0
     
     def test_zero_timestamp(self):
         """Test handling of zero timestamp (Unix epoch)."""
@@ -240,7 +236,7 @@ class TestEdgeCaseJson:
         
         for bad_json in malformed_inputs:
             try:
-                result = json.loads(bad_json)
+                json.loads(bad_json)  # May raise
                 # null and [] are valid JSON
                 assert bad_json in ['null', '[]']
             except json.JSONDecodeError:
@@ -289,7 +285,7 @@ class TestConcurrencyEdgeCases:
         
         # All have same timestamp - should detect as duplicates
         for i in range(1, len(events)):
-            assert events[i]['timestamp'] == events[i-1]['timestamp']
+            assert events[i]['timestamp'] == events[i - 1]['timestamp']
     
     def test_out_of_order_batch(self):
         """Test handling of out-of-order events in a batch."""
@@ -304,7 +300,7 @@ class TestConcurrencyEdgeCases:
         
         # Detect out-of-order
         for i in range(1, len(events)):
-            if events[i]['timestamp'] < events[i-1]['timestamp']:
+            if events[i]['timestamp'] < events[i - 1]['timestamp']:
                 # This is out of order
                 assert True
 
@@ -336,7 +332,7 @@ class TestQualityScoreEdgeCases:
     
     def test_all_penalties_applied(self):
         """Test applying all possible penalties."""
-        score = 1.0
+        initial_score = 1.0
         
         all_penalties = {
             'INVALID_PRICE_NEGATIVE': 0.25,
@@ -360,7 +356,7 @@ class TestQualityScoreEdgeCases:
         assert total_penalty > 1.0  # More than 100% penalty possible
         
         # Score should clamp to 0
-        final_score = max(0.0, 1.0 - total_penalty)
+        final_score = max(0.0, initial_score - total_penalty)
         assert final_score == 0.0
 
 

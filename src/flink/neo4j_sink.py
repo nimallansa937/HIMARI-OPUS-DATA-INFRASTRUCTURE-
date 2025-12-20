@@ -4,9 +4,7 @@
 
 import json
 import logging
-from datetime import datetime
-from typing import Dict, Any, List, Optional
-from contextlib import contextmanager
+from typing import Dict, Any, List
 
 from neo4j import GraphDatabase
 from pyflink.datastream.functions import SinkFunction

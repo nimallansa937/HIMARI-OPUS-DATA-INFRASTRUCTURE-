@@ -45,7 +45,13 @@ python src/flink/flink_quality_pipeline.py
 
 ## 📐 Architecture
 
-```
+**This repository implements [Layer 0: Data Foundation] of the HIMARI architecture.**
+
+![HIMARI Architecture](docs/images/himari_architecture.jpg)
+
+### Internal Component Structure
+
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         Data Sources                                 │
 │    Binance • Kraken • Bybit • Deribit • Coinbase WebSockets         │
@@ -74,13 +80,14 @@ python src/flink/flink_quality_pipeline.py
           │  (Online) │     │  (Warm)   │      │  (Graph)  │    │(Metrics)  │
           │  <10ms    │     │ Analytics │      │  Causal   │    │           │
           └───────────┘     └───────────┘      └───────────┘    └───────────┘
-```
+```text
 
 ---
 
 ## 📁 Project Structure
 
-```
+```text
+
 HIMARI OPUS/
 ├── src/flink/                    # Stream processing pipelines
 │   ├── flink_quality_pipeline.py # Main quality validation (30+ checks)
@@ -102,6 +109,7 @@ HIMARI OPUS/
 ├── docker-compose.yml           # One-command local deployment
 ├── requirements.txt             # Python dependencies
 └── HIMARI_Opus1_Production_Infrastructure_Guide.pdf  # Full 42-page guide
+
 ```
 
 ---

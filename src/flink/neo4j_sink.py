@@ -36,7 +36,7 @@ class Neo4jEventSink(SinkFunction):
         self.driver = None
     
     def open(self, runtime_context):
-        """Initialize Neo4j driver with connection pool."""
+        """Initialize Neo4j driver with connection pool and pre-warming."""
         self.driver = GraphDatabase.driver(
             self.uri,
             auth=(self.user, self.password),
@@ -44,9 +44,17 @@ class Neo4jEventSink(SinkFunction):
             connection_acquisition_timeout=30.0,
             max_transaction_retry_time=self.max_transaction_retry_time
         )
-        
-        # Verify connectivity
+
+        # Verify connectivity and pre-warm pool
         self.driver.verify_connectivity()
+
+        # Pre-warm connection pool with a simple query
+        try:
+            with self.driver.session() as session:
+                session.run("RETURN 1").consume()  # Warmup query
+        except Exception as e:
+            logger.warning(f"Neo4j warmup query failed: {e}")
+
         logger.info(f"Connected to Neo4j at {self.uri}")
     
     def invoke(self, value: str, context):

@@ -5,8 +5,16 @@
 import os
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Dict, Any, Tuple
+
+try:
+    import msgpack
+    USE_MSGPACK = True
+except ImportError:
+    USE_MSGPACK = False
+    logging.warning("msgpack not available, falling back to JSON")
 
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.functions import (
@@ -47,11 +55,18 @@ VALID_EXCHANGES = {'binance', 'kraken', 'bybit', 'deribit', 'coinbase'}
 # DATA PARSING
 # ============================================================
 class ParseMarketData(MapFunction):
-    """Parse JSON market data into structured format."""
-    
+    """Parse market data (MessagePack or JSON) into structured format."""
+
     def map(self, value: str) -> Tuple[str, Dict[str, Any]]:
         try:
-            data = json.loads(value)
+            # Try MessagePack first (3x faster), fallback to JSON
+            if USE_MSGPACK and isinstance(value, bytes):
+                data = msgpack.unpackb(value, raw=False)
+            elif USE_MSGPACK:
+                # If string, try JSON (for backwards compatibility)
+                data = json.loads(value)
+            else:
+                data = json.loads(value)
             
             # Convert ISO timestamp to milliseconds if needed
             timestamp = data.get('timestamp')
@@ -239,9 +254,10 @@ class QualityValidationOperator(KeyedProcessFunction):
                 issues.append('EXCESSIVE_PRECISION')
         
         # ========== CHECK 7: Timestamp Freshness ==========
-        now_ms = int(datetime.utcnow().timestamp() * 1000)
+        # Use time.time() instead of datetime.utcnow() to avoid syscall overhead
+        now_ms = int(time.time() * 1000)
         latency_ms = now_ms - current_ts
-        
+
         if latency_ms > 30000:  # >30 seconds old
             quality_score -= 0.15
             issues.append('STALE_DATA')
@@ -258,16 +274,24 @@ class QualityValidationOperator(KeyedProcessFunction):
         yield self._create_quality_output(symbol, data, quality_score, issues)
     
     def _create_quality_output(self, symbol, data, score, issues):
-        """Create standardized quality output."""
-        return json.dumps({
+        """Create standardized quality output (MessagePack or JSON)."""
+        # Use time.time() instead of datetime for performance
+        processed_at_ms = int(time.time() * 1000)
+        output_data = {
             'symbol': symbol,
             'timestamp': data.get('timestamp', 0),
             'quality_score': round(score, 3),
             'issues': issues,
             'issue_count': len(issues),
-            'processed_at': datetime.utcnow().isoformat(),
+            'processed_at_ms': processed_at_ms,  # Milliseconds timestamp
             'original_data': data.get('raw', {})
-        })
+        }
+
+        # Use MessagePack if available (3x faster serialization)
+        if USE_MSGPACK:
+            return msgpack.packb(output_data, use_bin_type=True)
+        else:
+            return json.dumps(output_data)
 
 
 # ============================================================
@@ -278,18 +302,23 @@ def create_pipeline():
     
     # Create execution environment
     env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_parallelism(4)
-    
-    # Enable checkpointing
-    env.enable_checkpointing(30000)  # 30 seconds
+    env.set_parallelism(8)  # Optimized for 8 vCPU Flink server
+
+    # Enable checkpointing with optimized intervals
+    env.enable_checkpointing(60000)  # 60 seconds (reduced overhead)
     config = env.get_checkpoint_config()
-    config.set_min_pause_between_checkpoints(10000)
+    config.set_min_pause_between_checkpoints(20000)  # 20s instead of 10s
     config.set_checkpoint_timeout(120000)
     
-    # Build Kafka properties
+    # Build Kafka properties with async optimizations
     kafka_props = {
         'bootstrap.servers': KAFKA_BOOTSTRAP,
         'group.id': 'himari-quality-processor',
+        'enable.auto.commit': 'false',  # Manual commit for better control
+        'max.in.flight.requests.per.connection': '5',  # Pipeline requests
+        'compression.type': 'lz4',  # Fast compression
+        'linger.ms': '5',  # Batch messages for 5ms
+        'batch.size': '16384',  # 16KB batches
     }
     
     # Add SASL if password provided

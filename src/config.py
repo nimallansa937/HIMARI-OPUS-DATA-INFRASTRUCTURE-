@@ -75,12 +75,12 @@ class QualityConfig:
 @dataclass
 class FlinkConfig:
     """Flink pipeline configuration."""
-    # Parallelism
-    parallelism: int = 4
-    
-    # Checkpointing
-    checkpoint_interval_ms: int = 30000  # 30 seconds
-    min_pause_between_checkpoints_ms: int = 10000
+    # Parallelism (optimized for 8 vCPU Flink server)
+    parallelism: int = 8
+
+    # Checkpointing (optimized intervals to reduce overhead)
+    checkpoint_interval_ms: int = 60000  # 60 seconds
+    min_pause_between_checkpoints_ms: int = 20000  # 20 seconds
     checkpoint_timeout_ms: int = 120000
     
     # State TTL
@@ -113,18 +113,21 @@ class RedisConfig:
     port: int = int(os.getenv('REDIS_PORT', '6379'))
     password: str = os.getenv('REDIS_PASSWORD', '')
     db: int = int(os.getenv('REDIS_DB', '0'))
-    
-    # Performance
+
+    # Performance (optimized for low latency)
     batch_size: int = 100
+    batch_timeout_ms: int = 50  # Flush after 50ms even if not full
     max_connections: int = 10
     socket_timeout: float = 5.0
-    
+    socket_keepalive: bool = True  # Prevent reconnect spikes
+    health_check_interval: int = 30  # Detect dead connections
+
     # TTL
     feature_ttl_seconds: int = 3600  # 1 hour
     history_max_entries: int = 1000
 
 
-@dataclass 
+@dataclass
 class TimescaleConfig:
     """TimescaleDB sink configuration."""
     host: str = os.getenv('TIMESCALE_HOST', 'localhost')
@@ -132,9 +135,9 @@ class TimescaleConfig:
     database: str = os.getenv('TIMESCALE_DB', 'himari_analytics')
     user: str = os.getenv('TIMESCALE_USER', 'himari')
     password: str = os.getenv('TIMESCALE_PASSWORD', '')
-    
-    # Performance
-    batch_size: int = 500
+
+    # Performance (optimized for lower latency)
+    batch_size: int = 250  # Reduced from 500 for lower latency
     min_connections: int = 2
     max_connections: int = 10
     connect_timeout: int = 10

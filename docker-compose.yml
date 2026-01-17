@@ -22,9 +22,10 @@ services:
       - --rpc-addr redpanda:33145
       - --advertise-rpc-addr redpanda:33145
       - --mode dev-container
-      - --smp 1
+      - --smp 2
       - --default-log-level=warn
-      - --memory 2G
+      - --memory 4G
+      - --overprovisioned  # Better latency on shared CPU
     ports:
       - "19092:19092" # Kafka API
       - "18082:18082" # Pandaproxy (HTTP API)
@@ -34,7 +35,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 4G
           cpus: '2'
     healthcheck:
       test: ["CMD", "rpk", "cluster", "health"]

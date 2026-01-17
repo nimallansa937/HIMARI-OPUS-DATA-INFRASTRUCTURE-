@@ -4,6 +4,7 @@
 
 import redis
 import json
+import time
 from typing import Dict, Any, List
 
 from pyflink.datastream.functions import SinkFunction
@@ -21,19 +22,22 @@ class RedisFeatureSink(SinkFunction):
         port: int = 6379,
         password: str = '',
         db: int = 0,
-        batch_size: int = 100
+        batch_size: int = 100,
+        batch_timeout_ms: int = 50  # Flush after 50ms even if not full
     ):
         self.host = host
         self.port = port
         self.password = password
         self.db = db
         self.batch_size = batch_size
+        self.batch_timeout_ms = batch_timeout_ms
         self.buffer: List[str] = []
         self.pool = None
         self.client = None
+        self.last_flush_time = 0
     
     def open(self, runtime_context):
-        """Initialize Redis connection pool."""
+        """Initialize Redis connection pool with keepalive."""
         self.pool = redis.ConnectionPool(
             host=self.host,
             port=self.port,
@@ -42,47 +46,56 @@ class RedisFeatureSink(SinkFunction):
             max_connections=10,
             decode_responses=True,
             socket_timeout=5.0,
-            socket_connect_timeout=5.0
+            socket_connect_timeout=5.0,
+            socket_keepalive=True,  # Prevent reconnect spikes
+            socket_keepalive_options={},
+            health_check_interval=30  # Detect dead connections
         )
         self.client = redis.Redis(connection_pool=self.pool)
-        
-        # Verify connection
+
+        # Verify connection and pre-warm pool
         self.client.ping()
+        self.last_flush_time = time.time() * 1000  # milliseconds
     
     def invoke(self, value: str, context):
-        """Buffer and batch-write features to Redis."""
+        """Buffer and batch-write features to Redis with timeout."""
         self.buffer.append(value)
-        
-        if len(self.buffer) >= self.batch_size:
+
+        current_time = time.time() * 1000  # milliseconds
+        time_since_flush = current_time - self.last_flush_time
+
+        # Flush if batch is full OR timeout exceeded
+        if len(self.buffer) >= self.batch_size or time_since_flush >= self.batch_timeout_ms:
             self._flush_buffer()
     
     def _flush_buffer(self):
         """Flush buffer to Redis using pipeline."""
         if not self.buffer:
             return
-        
+
         try:
             pipe = self.client.pipeline()
-            
+
             for item in self.buffer:
                 data = json.loads(item)
                 symbol = data['symbol']
                 timestamp = data['timestamp']
-                
+
                 # Latest feature (always overwritten)
                 latest_key = f"features:{symbol}:latest"
                 pipe.set(latest_key, item, ex=3600)  # 1 hour TTL
-                
+
                 # Time-indexed for lookups (sorted set)
                 history_key = f"features:{symbol}:history"
                 pipe.zadd(history_key, {item: timestamp})
-                
+
                 # Trim history to last 1000 entries
                 pipe.zremrangebyrank(history_key, 0, -1001)
-            
+
             pipe.execute()
             self.buffer.clear()
-        
+            self.last_flush_time = time.time() * 1000  # Update flush time
+
         except redis.RedisError as e:
             # Log error but don't crash - will retry on next batch
             print(f"Redis write error: {e}")

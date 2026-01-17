@@ -8,6 +8,7 @@ redis>=4.5.0
 psycopg2-binary>=2.9.0
 sqlalchemy>=1.4.0
 neo4j>=5.0.0
+msgpack>=1.0.0  # 3x faster serialization than JSON
 numpy
 pandas
 pytest

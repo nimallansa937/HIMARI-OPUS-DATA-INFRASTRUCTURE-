@@ -25,7 +25,7 @@ class TimescaleDBSink(SinkFunction):
         user: str,
         password: str,
         port: int = 5432,
-        batch_size: int = 500
+        batch_size: int = 250  # Reduced for lower latency
     ):
         self.host = host
         self.database = database
@@ -37,7 +37,7 @@ class TimescaleDBSink(SinkFunction):
         self.conn_pool = None
     
     def open(self, runtime_context):
-        """Initialize connection pool."""
+        """Initialize connection pool with pre-warming."""
         self.conn_pool = pool.ThreadedConnectionPool(
             minconn=2,
             maxconn=10,
@@ -48,6 +48,17 @@ class TimescaleDBSink(SinkFunction):
             password=self.password,
             connect_timeout=10
         )
+
+        # Pre-warm connection pool to avoid cold start latency
+        conn = None
+        try:
+            conn = self.conn_pool.getconn()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")  # Warmup query
+            cursor.close()
+        finally:
+            if conn:
+                self.conn_pool.putconn(conn)
     
     def invoke(self, value: str, context):
         """Buffer records and batch-insert to TimescaleDB."""

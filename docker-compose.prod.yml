@@ -1,0 +1,229 @@
+# HIMARI Opus1 - Production Docker Compose
+# Secure configuration with localhost-only port binding
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+
+version: "3.8"
+
+services:
+  # ==========================================================================
+  # REDPANDA (Kafka-compatible message broker)
+  # ==========================================================================
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.1.1
+    container_name: himari-redpanda
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+      - --mode production
+      - --smp 2
+      - --memory 2G
+      - --default-log-level=info
+    ports:
+      # SECURITY: Bind to localhost only - not exposed externally
+      - "127.0.0.1:19092:19092"
+      - "127.0.0.1:18082:18082"
+      - "127.0.0.1:18081:18081"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - himari-network
+
+  # ==========================================================================
+  # REDIS (Online Feature Store)
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: himari-redis
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 512mb 
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-}
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - himari-network
+
+  # ==========================================================================
+  # TIMESCALEDB (Warm Analytics Store)
+  # ==========================================================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: himari-timescale
+    environment:
+      POSTGRES_USER: ${TIMESCALE_USER:-himari}
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD}
+      POSTGRES_DB: himari_analytics
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U himari -d himari_analytics"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - himari-network
+
+  # ==========================================================================
+  # NEO4J (Causal Event Knowledge Graph)
+  # ==========================================================================
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: himari-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+      NEO4J_dbms_memory_pagecache_size: 512m
+      # Security hardening
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_dbms_connector_bolt_listen__address: 0.0.0.0:7687
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+      - ./neo4j:/import:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '1'
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - himari-network
+
+  # ==========================================================================
+  # PROMETHEUS (Metrics & Monitoring)
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: himari-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - himari-network
+
+  # ==========================================================================
+  # GRAFANA (Dashboards)
+  # ==========================================================================
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: himari-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_URL:-http://localhost:3000}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - himari-network
+
+# ==========================================================================
+# NETWORKS
+# ==========================================================================
+networks:
+  himari-network:
+    name: himari-network
+    driver: bridge
+
+# ==========================================================================
+# PERSISTENT VOLUMES
+# ==========================================================================
+volumes:
+  redpanda-data:
+    name: himari-redpanda-data
+  redis-data:
+    name: himari-redis-data
+  timescale-data:
+    name: himari-timescale-data
+  neo4j-data:
+    name: himari-neo4j-data
+  neo4j-logs:
+    name: himari-neo4j-logs
+  prometheus-data:
+    name: himari-prometheus-data
+  grafana-data:
+    name: himari-grafana-data

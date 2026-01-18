@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker:*)",
+      "Bash(docker-compose:*)",
+      "Bash(wmic OS:*)",
+      "Bash(systeminfo:*)",
+      "Bash(findstr:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)",
+      "Bash(powershell \"Get-CimInstance Win32_OperatingSystem | Select-Object @{Name=''TotalRAM\\(GB\\)'';Expression={[math]::Round\\($_TotalVisibleMemorySize/1MB,2\\)}}, @{Name=''FreeRAM\\(GB\\)'';Expression={[math]::Round\\($_FreePhysicalMemory/1MB,2\\)}}\")",
+      "Bash(powershell:*)",
+      "Bash(python:*)"
+    ]
+  }
+}
